@@ -123,6 +123,7 @@ class Ifaces:
 
     def _pre_edit_validation_and_cleanup(self):
         self._validate_over_booked_slaves()
+        self._validate_vlan_mtu_lte_base_mtu()
         self._handle_master_slave_list_change()
         self._match_child_iface_state_with_parent()
         self._mark_orphen_as_absent()
@@ -163,6 +164,43 @@ class Ifaces:
                         raise NmstateValueError(
                             f"OVS patch port peer {iface.peer} must be an OVS"
                             " patch port"
+                        )
+
+    def _validate_vlan_mtu_lte_base_mtu(self):
+        """
+            Validate that mtu of vlan or vxlan is less than
+            or equal to it's base interface's MTU
+
+            If base MTU is not present, set same as vlan MTU
+        """
+        for iface in self._ifaces.values():
+            if (
+                iface.iface_type == InterfaceType.VLAN
+                or iface.iface_type == InterfaceType.VXLAN
+            ):
+
+                if iface.state == InterfaceState.UP:
+
+                    if not iface.mtu:
+                        raise NmstateValueError(
+                            f"paramater mtu missing for vlan {iface.name}"
+                        )
+
+                    base_iface = self._ifaces.get(iface.parent)
+                    if not base_iface:
+                        raise NmstateValueError(
+                            f"base interface {iface.parent} for vlan \
+                                            {iface.name} does not exist"
+                        )
+
+                    if not base_iface.mtu:
+                        base_iface.mtu = iface.mtu
+
+                    if iface.mtu > base_iface.mtu:
+                        raise NmstateValueError(
+                            f"{iface.name} mtu {iface.mtu} cannot be \
+                            greater than it's base interface \
+                            {base_iface.name} mtu {base_iface.mtu} "
                         )
 
     def _handle_master_slave_list_change(self):
